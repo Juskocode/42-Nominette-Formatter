@@ -11,7 +11,9 @@ class NorminetteDashboard {
         this.currentFiles = [];
         this.selectedFiles = new Set();
         this.currentFileDetails = null;
-        
+        this.currentBrowserPath = null;
+        this.selectedBrowserPath = null;
+
         this.initializeEventListeners();
         this.initializeTooltips();
     }
@@ -23,13 +25,26 @@ class NorminetteDashboard {
         // Project scanning
         document.getElementById('scan-btn').addEventListener('click', () => this.scanProject());
         document.getElementById('rescan-btn').addEventListener('click', () => this.rescanProject());
-        
+
         // Enter key support for project path input
         document.getElementById('project-path-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 this.scanProject();
             }
         });
+
+        // Path input with autocompletion
+        document.getElementById('project-path-input').addEventListener('input', (e) => {
+            this.debounce(() => this.showPathSuggestions(e.target.value), 300)();
+        });
+
+        // Browse button
+        document.getElementById('browse-btn').addEventListener('click', () => this.openFileBrowser());
+
+        // File browser modal events
+        document.getElementById('browser-home-btn').addEventListener('click', () => this.navigateToHome());
+        document.getElementById('browser-refresh-btn').addEventListener('click', () => this.refreshBrowser());
+        document.getElementById('browser-select-btn').addEventListener('click', () => this.selectBrowserPath());
 
         // Filtering
         document.getElementById('status-filter').addEventListener('change', () => this.applyFilters());
@@ -96,14 +111,14 @@ class NorminetteDashboard {
     showToast(message, type = 'info') {
         const toast = document.getElementById('toast');
         const toastBody = document.getElementById('toast-body');
-        
+
         toastBody.textContent = message;
-        
+
         // Update toast styling based on type
         toast.className = `toast ${type === 'success' ? 'bg-success text-white' : 
                                   type === 'error' ? 'bg-danger text-white' : 
                                   type === 'warning' ? 'bg-warning text-dark' : 'bg-info text-white'}`;
-        
+
         const bsToast = new bootstrap.Toast(toast);
         bsToast.show();
     }
@@ -113,7 +128,7 @@ class NorminetteDashboard {
      */
     async scanProject() {
         const projectPath = document.getElementById('project-path-input').value.trim();
-        
+
         if (!projectPath) {
             this.showToast('Please enter a project path', 'warning');
             return;
@@ -140,7 +155,7 @@ class NorminetteDashboard {
                 await this.loadFiles();
                 this.showProjectSections();
                 this.showToast('Project scanned successfully!', 'success');
-                
+
                 // Update UI elements
                 document.getElementById('project-path').textContent = projectPath;
                 document.getElementById('rescan-btn').style.display = 'inline-block';
@@ -171,7 +186,7 @@ class NorminetteDashboard {
      */
     updateProjectOverview(result) {
         const summary = result.summary;
-        
+
         document.getElementById('total-files').textContent = summary.total_files;
         document.getElementById('ok-files').textContent = summary.ok_files;
         document.getElementById('error-files').textContent = summary.error_files;
@@ -190,7 +205,7 @@ class NorminetteDashboard {
         recommendations.forEach(recommendation => {
             const item = document.createElement('div');
             item.className = 'recommendation-item';
-            
+
             // Determine recommendation type based on emoji
             if (recommendation.includes('🚨')) {
                 item.classList.add('critical');
@@ -199,7 +214,7 @@ class NorminetteDashboard {
             } else if (recommendation.includes('✅')) {
                 item.classList.add('success');
             }
-            
+
             item.textContent = recommendation;
             container.appendChild(item);
         });
@@ -213,7 +228,7 @@ class NorminetteDashboard {
         document.getElementById('recommendations-section').style.display = 'block';
         document.getElementById('filters-section').style.display = 'block';
         document.getElementById('files-section').style.display = 'block';
-        
+
         // Add fade-in animation
         document.getElementById('overview-section').classList.add('fade-in');
         document.getElementById('recommendations-section').classList.add('fade-in');
@@ -367,7 +382,7 @@ class NorminetteDashboard {
      */
     toggleSelectAll(checked) {
         this.selectedFiles.clear();
-        
+
         if (checked) {
             this.currentFiles.forEach(file => {
                 this.selectedFiles.add(file.filepath);
@@ -387,7 +402,7 @@ class NorminetteDashboard {
     updateSelectedFilesUI() {
         const selectedCount = this.selectedFiles.size;
         const fixSelectedBtn = document.getElementById('fix-selected-btn');
-        
+
         if (selectedCount > 0) {
             fixSelectedBtn.textContent = `Fix Selected (${selectedCount})`;
             fixSelectedBtn.disabled = false;
@@ -428,7 +443,7 @@ class NorminetteDashboard {
      */
     renderFileDetailsModal(fileData) {
         const container = document.getElementById('file-details-content');
-        
+
         let html = `
             <div class="mb-3">
                 <h6>File Information</h6>
@@ -441,7 +456,7 @@ class NorminetteDashboard {
 
         if (Object.keys(fileData.error_groups).length > 0) {
             html += '<h6>Errors by Type</h6>';
-            
+
             Object.entries(fileData.error_groups).forEach(([errorType, errors]) => {
                 html += `
                     <div class="error-group">
@@ -449,7 +464,7 @@ class NorminetteDashboard {
                             ${errorType.replace('_', ' ').toUpperCase()} (${errors.length})
                         </div>
                 `;
-                
+
                 errors.forEach(error => {
                     html += `
                         <div class="error-item">
@@ -467,7 +482,7 @@ class NorminetteDashboard {
                         </div>
                     `;
                 });
-                
+
                 html += '</div>';
             });
         } else {
@@ -479,7 +494,7 @@ class NorminetteDashboard {
         // Update modal buttons
         const previewBtn = document.getElementById('preview-fixes-btn');
         const applyBtn = document.getElementById('apply-fixes-btn');
-        
+
         if (fileData.auto_fixable_count > 0) {
             previewBtn.style.display = 'inline-block';
             applyBtn.style.display = 'inline-block';
@@ -530,11 +545,11 @@ class NorminetteDashboard {
         if (!this.currentFileDetails) return;
 
         await this.formatFile(this.currentFileDetails.filepath);
-        
+
         // Close modal and refresh data
         const modal = bootstrap.Modal.getInstance(document.getElementById('file-details-modal'));
         modal.hide();
-        
+
         await this.loadFiles();
     }
 
@@ -545,14 +560,14 @@ class NorminetteDashboard {
         if (!this.currentFileDetails) return;
 
         await this.formatFile(this.currentFileDetails.filepath);
-        
+
         // Close modals and refresh data
         const previewModal = bootstrap.Modal.getInstance(document.getElementById('preview-modal'));
         const detailsModal = bootstrap.Modal.getInstance(document.getElementById('file-details-modal'));
-        
+
         previewModal.hide();
         if (detailsModal) detailsModal.hide();
-        
+
         await this.loadFiles();
     }
 
@@ -599,7 +614,7 @@ class NorminetteDashboard {
      */
     async fixAllAutoFixable() {
         const autoFixableFiles = this.currentFiles.filter(file => file.auto_fixable_count > 0);
-        
+
         if (autoFixableFiles.length === 0) {
             this.showToast('No auto-fixable errors found', 'warning');
             return;
@@ -651,7 +666,7 @@ class NorminetteDashboard {
             if (result.success) {
                 this.showToast(`Successfully processed ${result.total_files_processed} files with ${result.total_changes} total changes`, 'success');
                 await this.loadFiles();
-                
+
                 // Clear selections
                 this.selectedFiles.clear();
                 document.getElementById('select-all-files').checked = false;
@@ -690,6 +705,287 @@ class NorminetteDashboard {
         } catch (error) {
             console.error('Export error:', error);
             this.showToast('Failed to export report', 'error');
+        }
+    }
+
+    /**
+     * Show path suggestions for autocompletion
+     */
+    async showPathSuggestions(inputValue) {
+        if (!inputValue || inputValue.length < 2) {
+            this.hidePathSuggestions();
+            return;
+        }
+
+        try {
+            // Mock path suggestions - in a real implementation, this would call an API
+            const suggestions = this.generatePathSuggestions(inputValue);
+            this.displayPathSuggestions(suggestions);
+        } catch (error) {
+            console.error('Path suggestion error:', error);
+        }
+    }
+
+    /**
+     * Generate path suggestions based on input
+     */
+    generatePathSuggestions(inputValue) {
+        // Mock suggestions based on common paths for different OS
+        const isMac = navigator.userAgent.includes('Mac');
+        const isWindows = navigator.userAgent.includes('Windows');
+
+        let commonPaths = [];
+
+        if (isMac) {
+            commonPaths = [
+                '/Users/user/Desktop',
+                '/Users/user/Documents',
+                '/Users/user/Downloads',
+                '/Users/user/Projects',
+                '/Applications',
+                '/tmp'
+            ];
+        } else if (isWindows) {
+            commonPaths = [
+                'C:\\Users\\user\\Desktop',
+                'C:\\Users\\user\\Documents',
+                'C:\\Users\\user\\Downloads',
+                'C:\\Projects',
+                'D:\\Projects'
+            ];
+        } else {
+            commonPaths = [
+                '/home/user',
+                '/home/user/Desktop',
+                '/home/user/Documents',
+                '/home/user/Downloads',
+                '/tmp',
+                '/var'
+            ];
+        }
+
+        // Add relative paths
+        commonPaths.push('./src', './projects', '../', './');
+
+        return commonPaths.filter(path => 
+            path.toLowerCase().includes(inputValue.toLowerCase())
+        ).slice(0, 5);
+    }
+
+    /**
+     * Display path suggestions dropdown
+     */
+    displayPathSuggestions(suggestions) {
+        let dropdown = document.getElementById('path-suggestions');
+
+        if (!dropdown) {
+            dropdown = document.createElement('div');
+            dropdown.id = 'path-suggestions';
+            dropdown.className = 'dropdown-menu show';
+            dropdown.style.position = 'absolute';
+            dropdown.style.zIndex = '1000';
+
+            const input = document.getElementById('project-path-input');
+            input.parentNode.style.position = 'relative';
+            input.parentNode.appendChild(dropdown);
+        }
+
+        dropdown.innerHTML = '';
+
+        suggestions.forEach(suggestion => {
+            const item = document.createElement('a');
+            item.className = 'dropdown-item';
+            item.href = '#';
+            item.textContent = suggestion;
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.getElementById('project-path-input').value = suggestion;
+                this.hidePathSuggestions();
+            });
+            dropdown.appendChild(item);
+        });
+
+        if (suggestions.length === 0) {
+            this.hidePathSuggestions();
+        }
+    }
+
+    /**
+     * Hide path suggestions dropdown
+     */
+    hidePathSuggestions() {
+        const dropdown = document.getElementById('path-suggestions');
+        if (dropdown) {
+            dropdown.remove();
+        }
+    }
+
+    /**
+     * Open file browser modal
+     */
+    openFileBrowser() {
+        // Create file browser modal if it doesn't exist
+        this.createFileBrowserModal();
+
+        // Initialize with home directory
+        this.currentBrowserPath = this.getHomeDirectory();
+        this.loadBrowserDirectory(this.currentBrowserPath);
+
+        const modal = new bootstrap.Modal(document.getElementById('file-browser-modal'));
+        modal.show();
+    }
+
+    /**
+     * Get home directory path
+     */
+    getHomeDirectory() {
+        // Use a reasonable default for browser environment
+        return '/Users/' + (navigator.userAgent.includes('Mac') ? 'user' : 'user');
+    }
+
+    /**
+     * Create file browser modal (already exists in HTML)
+     */
+    createFileBrowserModal() {
+        // Modal already exists in HTML, no need to create
+        return;
+    }
+
+    /**
+     * Load directory contents in browser
+     */
+    async loadBrowserDirectory(path) {
+        const content = document.getElementById('browser-content');
+        const pathInput = document.getElementById('browser-path-input');
+
+        if (pathInput) {
+            pathInput.value = path;
+        }
+
+        try {
+            // Mock directory listing - in a real implementation, this would call an API
+            const directories = this.mockDirectoryListing(path);
+            this.renderBrowserContent(directories);
+        } catch (error) {
+            console.error('Browser directory load error:', error);
+            content.innerHTML = '<div class="alert alert-danger">Failed to load directory contents</div>';
+        }
+    }
+
+    /**
+     * Mock directory listing
+     */
+    mockDirectoryListing(path) {
+        // Mock directory structure
+        const mockDirs = [
+            { name: '..', type: 'directory', path: this.getParentPath(path) },
+            { name: 'Desktop', type: 'directory', path: path + '/Desktop' },
+            { name: 'Documents', type: 'directory', path: path + '/Documents' },
+            { name: 'Downloads', type: 'directory', path: path + '/Downloads' },
+            { name: 'Projects', type: 'directory', path: path + '/Projects' },
+            { name: 'src', type: 'directory', path: path + '/src' },
+            { name: 'example.c', type: 'file', path: path + '/example.c' },
+            { name: 'README.md', type: 'file', path: path + '/README.md' }
+        ];
+
+        return mockDirs;
+    }
+
+    /**
+     * Get parent directory path
+     */
+    getParentPath(path) {
+        const parts = path.split('/').filter(p => p);
+        parts.pop();
+        return '/' + parts.join('/');
+    }
+
+    /**
+     * Render browser content
+     */
+    renderBrowserContent(items) {
+        const browserItems = document.getElementById('browser-items');
+        const selectedPathSpan = document.getElementById('browser-selected-path');
+        const selectBtn = document.getElementById('browser-select-btn');
+
+        if (!browserItems) return;
+
+        browserItems.innerHTML = '';
+
+        items.forEach(item => {
+            const icon = item.type === 'directory' ? 'fas fa-folder text-primary' : 'fas fa-file text-secondary';
+            const itemElement = document.createElement('div');
+            itemElement.className = 'list-group-item list-group-item-action d-flex align-items-center';
+            itemElement.style.cursor = 'pointer';
+
+            itemElement.innerHTML = `
+                <i class="${icon} me-2"></i>
+                <span>${item.name}</span>
+                ${item.type === 'directory' ? '<i class="fas fa-chevron-right ms-auto text-muted"></i>' : ''}
+            `;
+
+            // Add click handlers
+            if (item.type === 'directory') {
+                itemElement.addEventListener('dblclick', () => {
+                    this.navigateToBrowserPath(item.path);
+                });
+
+                itemElement.addEventListener('click', () => {
+                    // Remove previous selection
+                    browserItems.querySelectorAll('.list-group-item').forEach(el => {
+                        el.classList.remove('active');
+                    });
+
+                    // Add selection to current item
+                    itemElement.classList.add('active');
+
+                    // Update selected path
+                    this.selectedBrowserPath = item.path;
+                    selectedPathSpan.textContent = item.path;
+                    selectBtn.disabled = false;
+                });
+            }
+
+            browserItems.appendChild(itemElement);
+        });
+    }
+
+    /**
+     * Navigate to browser path
+     */
+    navigateToBrowserPath(path) {
+        this.currentBrowserPath = path;
+        this.loadBrowserDirectory(path);
+    }
+
+    /**
+     * Navigate to home directory
+     */
+    navigateToHome() {
+        const homePath = this.getHomeDirectory();
+        this.navigateToBrowserPath(homePath);
+    }
+
+    /**
+     * Refresh browser directory
+     */
+    refreshBrowser() {
+        if (this.currentBrowserPath) {
+            this.loadBrowserDirectory(this.currentBrowserPath);
+        }
+    }
+
+    /**
+     * Select current browser path
+     */
+    selectBrowserPath() {
+        if (this.selectedBrowserPath) {
+            document.getElementById('project-path-input').value = this.selectedBrowserPath;
+
+            const modal = bootstrap.Modal.getInstance(document.getElementById('file-browser-modal'));
+            modal.hide();
+
+            this.showToast('Directory selected successfully', 'success');
         }
     }
 }

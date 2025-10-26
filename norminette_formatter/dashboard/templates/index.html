@@ -31,8 +31,23 @@
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-8">
-                                <input type="text" class="form-control" id="project-path-input" 
-                                       placeholder="Enter project directory path (e.g., /path/to/your/project)">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="project-path-input" 
+                                           placeholder="Enter project directory path (e.g., /path/to/your/project)"
+                                           autocomplete="off">
+                                    <button class="btn btn-outline-secondary" type="button" id="browse-btn" 
+                                            data-bs-toggle="modal" data-bs-target="#file-browser-modal">
+                                        <i class="fas fa-folder-open"></i> Browse
+                                    </button>
+                                </div>
+                                <div id="path-suggestions" class="dropdown-menu" style="display: none; width: 100%; max-height: 200px; overflow-y: auto;">
+                                    <!-- Path suggestions will be populated here -->
+                                </div>
+                                <div id="path-validation" class="mt-1" style="display: none;">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle"></i> <span id="path-info"></span>
+                                    </small>
+                                </div>
                             </div>
                             <div class="col-md-4">
                                 <button class="btn btn-primary" id="scan-btn">
@@ -270,6 +285,69 @@
         <div class="spinner-overlay">
             <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Browser Modal -->
+    <div class="modal fade" id="file-browser-modal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-folder-open"></i> Browse for Project Directory
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="fas fa-folder"></i>
+                            </span>
+                            <input type="text" class="form-control" id="browser-path-input" 
+                                   placeholder="Current directory path" readonly>
+                            <button class="btn btn-outline-secondary" type="button" id="browser-home-btn" title="Go to Home">
+                                <i class="fas fa-home"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary" type="button" id="browser-refresh-btn" title="Refresh">
+                                <i class="fas fa-sync"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="browser-loading" class="text-center" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading directory contents...</p>
+                    </div>
+
+                    <div id="browser-content" style="max-height: 400px; overflow-y: auto;">
+                        <div class="list-group" id="browser-items">
+                            <!-- Directory items will be populated here -->
+                        </div>
+                    </div>
+
+                    <div id="browser-info" class="mt-3">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i>
+                            Double-click directories to navigate, single-click to select.
+                            Only directories and C/H files are shown.
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="me-auto">
+                        <small class="text-muted">
+                            Selected: <span id="browser-selected-path">None</span>
+                        </small>
+                    </div>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="browser-select-btn" disabled>
+                        <i class="fas fa-check"></i> Select Directory
+                    </button>
+                </div>
             </div>
         </div>
     </div>
