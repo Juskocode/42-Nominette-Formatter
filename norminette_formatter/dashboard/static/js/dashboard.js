@@ -827,8 +827,16 @@ class NorminetteDashboard {
         // Create file browser modal if it doesn't exist
         this.createFileBrowserModal();
 
+        // Reset selected path
+        this.selectedBrowserPath = null;
+        const selectedPathSpan = document.getElementById('browser-selected-path');
+        const selectBtn = document.getElementById('browser-select-btn');
+        if (selectedPathSpan) selectedPathSpan.textContent = 'None';
+        if (selectBtn) selectBtn.disabled = true;
+
         // Initialize with home directory
-        this.currentBrowserPath = this.getHomeDirectory();
+        const homePath = this.getHomeDirectory();
+        this.currentBrowserPath = this.normalizePath(homePath);
         this.loadBrowserDirectory(this.currentBrowserPath);
 
         const modal = new bootstrap.Modal(document.getElementById('file-browser-modal'));
@@ -840,7 +848,9 @@ class NorminetteDashboard {
      */
     getHomeDirectory() {
         // Use a reasonable default for browser environment
-        return '/Users/' + (navigator.userAgent.includes('Mac') ? 'user' : 'user');
+        const homeDir = navigator.userAgent.includes('Mac') ? '/Users/user' : 
+                       navigator.userAgent.includes('Windows') ? 'C:\\Users\\user' : '/home/user';
+        return this.normalizePath(homeDir);
     }
 
     /**
@@ -857,14 +867,18 @@ class NorminetteDashboard {
     async loadBrowserDirectory(path) {
         const content = document.getElementById('browser-content');
         const pathInput = document.getElementById('browser-path-input');
+        const normalizedPath = this.normalizePath(path);
 
         if (pathInput) {
-            pathInput.value = path;
+            pathInput.value = normalizedPath;
         }
+
+        // Update current path
+        this.currentBrowserPath = normalizedPath;
 
         try {
             // Mock directory listing - in a real implementation, this would call an API
-            const directories = this.mockDirectoryListing(path);
+            const directories = this.mockDirectoryListing(normalizedPath);
             this.renderBrowserContent(directories);
         } catch (error) {
             console.error('Browser directory load error:', error);
@@ -876,27 +890,65 @@ class NorminetteDashboard {
      * Mock directory listing
      */
     mockDirectoryListing(path) {
+        // Normalize path to prevent duplication
+        const normalizedPath = this.normalizePath(path);
+
         // Mock directory structure
         const mockDirs = [
-            { name: '..', type: 'directory', path: this.getParentPath(path) },
-            { name: 'Desktop', type: 'directory', path: path + '/Desktop' },
-            { name: 'Documents', type: 'directory', path: path + '/Documents' },
-            { name: 'Downloads', type: 'directory', path: path + '/Downloads' },
-            { name: 'Projects', type: 'directory', path: path + '/Projects' },
-            { name: 'src', type: 'directory', path: path + '/src' },
-            { name: 'example.c', type: 'file', path: path + '/example.c' },
-            { name: 'README.md', type: 'file', path: path + '/README.md' }
+            { name: '..', type: 'directory', path: this.getParentPath(normalizedPath) },
+            { name: 'Desktop', type: 'directory', path: this.joinPath(normalizedPath, 'Desktop') },
+            { name: 'Documents', type: 'directory', path: this.joinPath(normalizedPath, 'Documents') },
+            { name: 'Downloads', type: 'directory', path: this.joinPath(normalizedPath, 'Downloads') },
+            { name: 'Projects', type: 'directory', path: this.joinPath(normalizedPath, 'Projects') },
+            { name: 'src', type: 'directory', path: this.joinPath(normalizedPath, 'src') },
+            { name: 'example.c', type: 'file', path: this.joinPath(normalizedPath, 'example.c') },
+            { name: 'README.md', type: 'file', path: this.joinPath(normalizedPath, 'README.md') }
         ];
 
         return mockDirs;
     }
 
     /**
+     * Normalize path to prevent duplication and handle edge cases
+     */
+    normalizePath(path) {
+        if (!path) return '/';
+
+        // Remove trailing slashes except for root
+        let normalized = path.replace(/\/+$/, '');
+        if (normalized === '') normalized = '/';
+
+        // Remove duplicate slashes
+        normalized = normalized.replace(/\/+/g, '/');
+
+        return normalized;
+    }
+
+    /**
+     * Join path components safely
+     */
+    joinPath(basePath, component) {
+        const normalizedBase = this.normalizePath(basePath);
+        const normalizedComponent = component.replace(/^\/+|\/+$/g, '');
+
+        if (normalizedBase === '/') {
+            return '/' + normalizedComponent;
+        }
+
+        return normalizedBase + '/' + normalizedComponent;
+    }
+
+    /**
      * Get parent directory path
      */
     getParentPath(path) {
-        const parts = path.split('/').filter(p => p);
+        const normalized = this.normalizePath(path);
+        if (normalized === '/') return '/';
+
+        const parts = normalized.split('/').filter(p => p);
         parts.pop();
+
+        if (parts.length === 0) return '/';
         return '/' + parts.join('/');
     }
 
@@ -926,23 +978,37 @@ class NorminetteDashboard {
 
             // Add click handlers
             if (item.type === 'directory') {
-                itemElement.addEventListener('dblclick', () => {
-                    this.navigateToBrowserPath(item.path);
+                let clickTimeout = null;
+
+                itemElement.addEventListener('click', (e) => {
+                    e.preventDefault();
+
+                    // Clear any existing timeout
+                    if (clickTimeout) {
+                        clearTimeout(clickTimeout);
+                        clickTimeout = null;
+                        return; // This is a double-click, let the dblclick handler take over
+                    }
+
+                    // Set timeout for single click
+                    clickTimeout = setTimeout(() => {
+                        // Single click - select directory
+                        this.selectDirectoryItem(item, itemElement, browserItems, selectedPathSpan, selectBtn);
+                        clickTimeout = null;
+                    }, 250);
                 });
 
-                itemElement.addEventListener('click', () => {
-                    // Remove previous selection
-                    browserItems.querySelectorAll('.list-group-item').forEach(el => {
-                        el.classList.remove('active');
-                    });
+                itemElement.addEventListener('dblclick', (e) => {
+                    e.preventDefault();
 
-                    // Add selection to current item
-                    itemElement.classList.add('active');
+                    // Clear single click timeout
+                    if (clickTimeout) {
+                        clearTimeout(clickTimeout);
+                        clickTimeout = null;
+                    }
 
-                    // Update selected path
-                    this.selectedBrowserPath = item.path;
-                    selectedPathSpan.textContent = item.path;
-                    selectBtn.disabled = false;
+                    // Double click - navigate to directory
+                    this.navigateToBrowserPath(item.path);
                 });
             }
 
@@ -951,11 +1017,37 @@ class NorminetteDashboard {
     }
 
     /**
+     * Select a directory item
+     */
+    selectDirectoryItem(item, itemElement, browserItems, selectedPathSpan, selectBtn) {
+        // Remove previous selection
+        browserItems.querySelectorAll('.list-group-item').forEach(el => {
+            el.classList.remove('active');
+        });
+
+        // Add selection to current item
+        itemElement.classList.add('active');
+
+        // Update selected path with normalized path
+        const normalizedPath = this.normalizePath(item.path);
+        this.selectedBrowserPath = normalizedPath;
+        selectedPathSpan.textContent = normalizedPath;
+        selectBtn.disabled = false;
+    }
+
+    /**
      * Navigate to browser path
      */
     navigateToBrowserPath(path) {
-        this.currentBrowserPath = path;
-        this.loadBrowserDirectory(path);
+        const normalizedPath = this.normalizePath(path);
+
+        // Prevent navigation to the same path
+        if (normalizedPath === this.currentBrowserPath) {
+            return;
+        }
+
+        this.currentBrowserPath = normalizedPath;
+        this.loadBrowserDirectory(normalizedPath);
     }
 
     /**
